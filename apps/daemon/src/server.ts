@@ -994,7 +994,7 @@ import {
 import { listLibraryTokenOrigins } from './library-store.js';
 import {
   API_TOKEN_BASIC_CHALLENGE,
-  apiTokenAuthorizationMatches,
+  apiTokenAuthorizationMatchesAny,
   apiTokenFromEnv,
   isApiAuthDisabled,
   isApiTokenMiddlewareEnabled,
@@ -1599,7 +1599,7 @@ export function createAgentRuntimeEnv(
   // children receive only their run-scoped tool capability, never that broad
   // credential inherited from the daemon process (including Windows casing).
   for (const key of Object.keys(env)) {
-    if (key.toUpperCase() === 'OD_API_TOKEN') delete env[key];
+    if (key.toUpperCase() === 'OD_API_TOKEN' || key.toUpperCase() === 'OD_WEB_API_TOKEN') delete env[key];
   }
   const sidecarIpcPath = baseEnv[SIDECAR_ENV.IPC_PATH];
   if (typeof sidecarIpcPath === 'string' && sidecarIpcPath.length > 0) {
@@ -2570,13 +2570,15 @@ export async function startServer({
   // matching Bearer token or browser Basic credentials (loopback origins
   // are exempted so the desktop UI keeps working).
   const apiToken = apiTokenFromEnv();
+  const webApiToken = (process.env.OD_WEB_API_TOKEN ?? '').trim();
   const apiAuthDisabled = isApiAuthDisabled();
-  const apiTokenAuthEnabled = apiToken.length > 0 && !apiAuthDisabled;
+  const apiTokens = [apiToken, webApiToken].filter((token) => token.length > 0);
+  const apiTokenAuthEnabled = apiTokens.length > 0 && !apiAuthDisabled;
   const isApiTokenAuthorization = (authorization: string | undefined): boolean =>
-    apiTokenAuthEnabled && apiTokenAuthorizationMatches(authorization, apiToken);
-  if (!isLoopbackHostname(host) && apiToken.length === 0 && !apiAuthDisabled) {
+    apiTokenAuthEnabled && apiTokenAuthorizationMatchesAny(authorization, apiTokens);
+  if (!isLoopbackHostname(host) && apiTokens.length === 0 && !apiAuthDisabled) {
     throw new Error(
-      `OD_BIND_HOST=${host} requires OD_API_TOKEN to be set. ` +
+      `OD_BIND_HOST=${host} requires OD_API_TOKEN or OD_WEB_API_TOKEN to be set. ` +
       `Generate one with \`openssl rand -hex 32\` and re-launch. ` +
       `(Loopback hosts 127.0.0.1 / ::1 / localhost do not need a token.) ` +
       `Set OD_DISABLE_API_AUTH=1 only when a trusted reverse proxy already authenticates every request.`,
@@ -2639,7 +2641,7 @@ export async function startServer({
       // credentials; the loopback bypass exists for the localhost desktop
       // UI which has no proxy in the path.
       if (isLoopbackPeerAddress(req.socket?.remoteAddress)) return next();
-      if (apiTokenAuthorizationMatches(req.get('authorization'), apiToken)) return next();
+      if (apiTokenAuthorizationMatchesAny(req.get('authorization'), apiTokens)) return next();
       if (
         req.method === 'POST'
         && PROJECT_RUN_SCOPED_EXPORT_PATH_RE.test(req.path)
@@ -2668,7 +2670,7 @@ export async function startServer({
     app.use((req, res, next) => {
       if (isLoopbackPeerAddress(req.socket?.remoteAddress)) return next();
       if (resolveStaticSpaFallbackPath(req, staticDir) === null) return next();
-      if (apiTokenAuthorizationMatches(req.get('authorization'), apiToken)) return next();
+      if (apiTokenAuthorizationMatchesAny(req.get('authorization'), apiTokens)) return next();
 
       res.setHeader('WWW-Authenticate', API_TOKEN_BASIC_CHALLENGE);
       return res.status(401).type('text/plain').send(
