@@ -1,13 +1,6 @@
-ARG NODE_IMAGE=opendesign-node:24.18.1
-ARG RUNTIME_IMAGE=opendesign-node:24.18.1
-FROM ${NODE_IMAGE} AS build
-ARG HTTP_PROXY
-ARG HTTPS_PROXY
-ARG http_proxy
-ARG https_proxy
-ARG no_proxy
-ARG NO_PROXY
-ENV HTTP_PROXY=${HTTP_PROXY} HTTPS_PROXY=${HTTPS_PROXY} http_proxy=${http_proxy} https_proxy=${https_proxy} no_proxy=${no_proxy} NO_PROXY=${NO_PROXY} CI=true
+FROM opendesign-node:24.18.1 AS build
+ENV CI=true
+RUN test "$(node --version)" = "v24.18.1"
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -26,7 +19,8 @@ COPY craft ./craft
 COPY prompt-templates ./prompt-templates
 COPY assets ./assets
 COPY plugins/_official ./plugins/_official
-FROM ${RUNTIME_IMAGE}
+FROM opendesign-node:24.18.1
+RUN test "$(node --version)" = "v24.18.1"
 RUN apt-get update && apt-get install -y --no-install-recommends tini poppler-utils bash git ca-certificates && rm -rf /var/lib/apt/lists/* && groupadd --system --gid 1001 open-design && useradd --system --no-create-home --uid 1001 --gid open-design open-design
 WORKDIR /app
 COPY --from=build --chown=open-design:open-design /app/deploy/daemon ./apps/daemon
@@ -42,5 +36,6 @@ RUN mkdir -p /app/.od && chown -R open-design:open-design /app
 ENV NODE_ENV=production NODE_OPTIONS=--max-old-space-size=192 OD_BIND_HOST=0.0.0.0 OD_PORT=7456
 EXPOSE 7456
 USER open-design
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD node -e "fetch('http://127.0.0.1:7456/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["node", "apps/daemon/dist/cli.js", "--host", "0.0.0.0", "--no-open"]
