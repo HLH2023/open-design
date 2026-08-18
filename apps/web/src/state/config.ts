@@ -1024,6 +1024,15 @@ export function saveConfig(config: AppConfig): void {
   for (const key of RETIRED_SECURE_BYOK_KEYS) {
     delete (sanitized as unknown as Record<string, unknown>)[key];
   }
+  // Provider secrets are daemon-owned. Never persist them in browser storage,
+  // including legacy local BYOK slots that predate server persistence.
+  sanitized.apiKey = '';
+  for (const config of Object.values(sanitized.apiProtocolConfigs ?? {})) {
+    if (config) config.apiKey = '';
+  }
+  for (const draft of Object.values(sanitized.byokProviderConfigDrafts ?? {})) {
+    if (draft?.apiConfig) draft.apiConfig.apiKey = '';
+  }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
 }
 
@@ -1224,6 +1233,45 @@ export interface PublicServerProviderConfig {
   model: string;
   configured: boolean;
   source: 'server';
+}
+
+export interface PersistedProviderConfigInput {
+  protocol: AppConfig['apiProtocol'];
+  baseUrl: string;
+  model: string;
+  apiKey?: string;
+}
+
+export async function fetchProviderConfig(): Promise<PublicServerProviderConfig | null> {
+  try {
+    const response = await fetch('/api/provider/config', { cache: 'no-store' });
+    if (!response.ok) return null;
+    const payload = await response.json() as { provider?: PublicServerProviderConfig | null };
+    return payload.provider ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function persistProviderConfig(
+  input: PersistedProviderConfigInput,
+): Promise<PublicServerProviderConfig> {
+  const response = await fetch('/api/provider/config', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const payload = await response.json().catch(() => null) as
+    { provider?: PublicServerProviderConfig; error?: string } | null;
+  if (!response.ok || !payload?.provider) {
+    throw new Error(payload?.error ?? `Provider save failed (${response.status})`);
+  }
+  return payload.provider;
+}
+
+export async function deleteProviderConfig(): Promise<void> {
+  const response = await fetch('/api/provider/config', { method: 'DELETE' });
+  if (!response.ok) throw new Error(`Provider delete failed (${response.status})`);
 }
 
 export async function fetchServerProviderConfig(): Promise<PublicServerProviderConfig | null> {

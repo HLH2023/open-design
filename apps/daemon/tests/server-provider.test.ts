@@ -1,10 +1,12 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  deleteServerProviderConfig,
   hydrateServerProviderRequest,
   loadServerProviderConfig,
+  persistServerProviderConfig,
   publicServerProviderConfig,
 } from '../src/server-provider.js';
 
@@ -57,6 +59,31 @@ describe('server provider configuration', () => {
     expect(hydrateServerProviderRequest({ apiKey: 'browser-key' }, 'anthropic', env)).toEqual({
       apiKey: 'browser-key',
     });
+  });
+
+  it('persists metadata and key separately with private permissions', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'od-provider-persist-'));
+    const saved = persistServerProviderConfig(dir, {
+      protocol: 'openai',
+      baseUrl: 'https://provider.example/v1',
+      model: 'model-a',
+      apiKey: '[REDACTED]',
+    });
+    expect(saved).toEqual({ protocol: 'openai', baseUrl: 'https://provider.example/v1', model: 'model-a', configured: true, source: 'server' });
+    const restored = loadServerProviderConfig({}, dir);
+    expect(restored?.apiKey).toBe('[REDACTED]');
+    expect(JSON.parse(readFileSync(join(dir, 'provider-config.json'), 'utf8'))).not.toHaveProperty('apiKey');
+    expect(statSync(join(dir, 'provider-api-key')).mode & 0o777).toBe(0o600);
+    expect(publicServerProviderConfig({}, dir)?.configured).toBe(true);
+    deleteServerProviderConfig(dir);
+    expect(loadServerProviderConfig({}, dir)).toBeNull();
+  });
+
+  it('updates metadata without requiring the existing key again', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'od-provider-update-'));
+    persistServerProviderConfig(dir, { protocol: 'openai', baseUrl: 'https://one.example/v1', model: 'one', apiKey: '[REDACTED]' });
+    persistServerProviderConfig(dir, { protocol: 'openai', baseUrl: 'https://two.example/v1', model: 'two' });
+    expect(loadServerProviderConfig({}, dir)).toMatchObject({ baseUrl: 'https://two.example/v1', model: 'two', apiKey: '[REDACTED]' });
   });
 
   it('does not accept a Provider key from an environment variable', () => {

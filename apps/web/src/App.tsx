@@ -141,7 +141,9 @@ import {
 import { goBack, navigate, useRoute, type Route } from './router';
 import {
   fetchDaemonConfig,
-  fetchServerProviderConfig,
+  fetchProviderConfig,
+  persistProviderConfig,
+  deleteProviderConfig,
   DEFAULT_CONFIG,
   DEFAULT_PET,
   fetchMediaProvidersFromDaemon,
@@ -2122,7 +2124,7 @@ function AppInner() {
       // before daemon overrides it.
       void Promise.all([
         fetchDaemonConfig(),
-        fetchServerProviderConfig(),
+        fetchProviderConfig(),
         fetchComposioConfigFromDaemon(),
         fetchMediaProvidersFromDaemon(),
       ]).then(async ([
@@ -2162,7 +2164,7 @@ function AppInner() {
               mode: 'api' as const,
             }
           : { serverProviderConfigured: false };
-        const next = mergeDaemonMediaProviders(
+        let next = mergeDaemonMediaProviders(
           {
             ...clearStaleAmrModelChoiceOnProfileChange(
               baseConfig,
@@ -2630,7 +2632,7 @@ function AppInner() {
    */
   const handleConfigPersist = useCallback(async (
     next: AppConfig,
-    options?: { forceMediaProviderSync?: boolean },
+    options?: { forceMediaProviderSync?: boolean; clearProvider?: boolean },
   ) => {
     // Strip the in-flight Composio secret before anything hits disk so
     // a half-typed key can't survive in localStorage. If the dialog is
@@ -2644,7 +2646,34 @@ function AppInner() {
     const nextForOptimistic = silentChanged
       ? { ...next, allowSilentUpdates: prevSilent }
       : next;
-    const persisted = buildPersistedConfig(nextForOptimistic, configRef.current);
+    let persisted = buildPersistedConfig(nextForOptimistic, configRef.current);
+    const shouldPersistProvider =
+      persisted.mode === 'api'
+      && Boolean(persisted.apiProtocol && persisted.baseUrl?.trim() && persisted.model?.trim())
+      && (Boolean(next.apiKey?.trim()) || persisted.serverProviderConfigured === true);
+    if (options?.clearProvider) {
+      await deleteProviderConfig();
+      persisted = {
+        ...persisted,
+        serverProviderConfigured: false,
+        apiKey: '',
+      };
+    } else if (shouldPersistProvider) {
+      const provider = await persistProviderConfig({
+        protocol: persisted.apiProtocol,
+        baseUrl: persisted.baseUrl,
+        model: persisted.model,
+        ...(next.apiKey?.trim() ? { apiKey: next.apiKey.trim() } : {}),
+      });
+      persisted = {
+        ...persisted,
+        serverProviderConfigured: provider.configured,
+        apiProtocol: provider.protocol,
+        baseUrl: provider.baseUrl,
+        model: provider.model,
+        apiKey: '',
+      };
+    }
     latestPersistedConfigRef.current = persisted;
     saveConfig(persisted);
     setConfig(persisted);

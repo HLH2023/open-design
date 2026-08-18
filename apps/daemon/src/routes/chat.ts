@@ -39,7 +39,7 @@ import { googleStreamGenerateContentUrl } from '../integrations/google-models.js
 import { createRoleMarkerGuard } from '../role-marker-guard.js';
 import { authorizeReasoningEgress, sendReasoningEgressDenial } from '../reasoning-egress.js';
 import type { AuthorizeProjectRequest } from '../collab/project-request-authority.js';
-import { hydrateServerProviderRequest, publicServerProviderConfig } from '../server-provider.js';
+import { deleteServerProviderConfig, hydrateServerProviderRequest, persistServerProviderConfig, publicServerProviderConfig } from '../server-provider.js';
 
 // Allowlist for the `/feedback` route. Mirrors the
 // ChatMessageFeedbackReasonCode union in packages/contracts/src/api/chat.ts.
@@ -188,7 +188,32 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
   });
 
   app.get('/api/provider/server-config', (_req, res) => {
-    res.json({ provider: publicServerProviderConfig() });
+    res.json({ provider: publicServerProviderConfig(process.env, ctx.paths.RUNTIME_DATA_DIR) });
+  });
+
+  app.get('/api/provider/config', (req, res) => {
+    if (!ctx.http.isLocalSameOrigin(req, ctx.http.resolvedPortRef.current)) return res.status(403).json({ error: 'cross-origin request rejected' });
+    res.json({ provider: publicServerProviderConfig(process.env, ctx.paths.RUNTIME_DATA_DIR) });
+  });
+
+  app.put('/api/provider/config', (req, res) => {
+    if (!ctx.http.isLocalSameOrigin(req, ctx.http.resolvedPortRef.current)) return res.status(403).json({ error: 'cross-origin request rejected' });
+    try {
+      const provider = persistServerProviderConfig(ctx.paths.RUNTIME_DATA_DIR, req.body ?? {}, process.env);
+      res.json({ provider });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : 'invalid provider configuration' });
+    }
+  });
+
+  app.delete('/api/provider/config', (req, res) => {
+    if (!ctx.http.isLocalSameOrigin(req, ctx.http.resolvedPortRef.current)) return res.status(403).json({ error: 'cross-origin request rejected' });
+    try {
+      deleteServerProviderConfig(ctx.paths.RUNTIME_DATA_DIR);
+      res.json({ provider: null });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'provider delete failed' });
+    }
   });
 
   // ---- Connection tests (single-shot JSON; no SSE) ------------------------
@@ -212,7 +237,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     const rawBody = req.body || {};
     const protocol = rawBody.protocol;
     const body = typeof protocol === 'string'
-      ? (hydrateServerProviderRequest(rawBody, protocol as any) || rawBody)
+      ? (hydrateServerProviderRequest(rawBody, protocol as any, process.env, ctx.paths.RUNTIME_DATA_DIR) || rawBody)
       : rawBody;
     if (
       typeof protocol !== 'string' ||
@@ -290,7 +315,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     res.on('close', abortIfResponseClosed);
     const rawBody = req.body || {};
     const body = rawBody.mode === 'provider' && typeof rawBody.protocol === 'string'
-      ? (hydrateServerProviderRequest(rawBody, rawBody.protocol as any) || rawBody)
+      ? (hydrateServerProviderRequest(rawBody, rawBody.protocol as any, process.env, ctx.paths.RUNTIME_DATA_DIR) || rawBody)
       : rawBody;
     try {
       if (body.mode === 'provider') {
@@ -994,7 +1019,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
 
   app.post('/api/proxy/anthropic/stream', async (req, res) => {
     /** @type {Partial<ProxyStreamRequest>} */
-    const proxyBody = hydrateServerProviderRequest(req.body || {}, 'anthropic') || req.body || {};
+    const proxyBody = hydrateServerProviderRequest(req.body || {}, 'anthropic', process.env, ctx.paths.RUNTIME_DATA_DIR) || req.body || {};
     if (rejectProxyPluginContext(proxyBody, res)) return;
     const { baseUrl, apiKey, model, systemPrompt, messages, maxTokens } =
       proxyBody;
@@ -1040,7 +1065,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
 
   app.post('/api/proxy/openai/stream', async (req, res) => {
     /** @type {Partial<ProxyStreamRequest>} */
-    const proxyBody = hydrateServerProviderRequest(req.body || {}, 'openai') || req.body || {};
+    const proxyBody = hydrateServerProviderRequest(req.body || {}, 'openai', process.env, ctx.paths.RUNTIME_DATA_DIR) || req.body || {};
     if (rejectProxyPluginContext(proxyBody, res)) return;
     const { baseUrl, apiKey, model, systemPrompt, messages, maxTokens } =
       proxyBody;
@@ -1192,7 +1217,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
 
   app.post('/api/proxy/azure/stream', async (req, res) => {
     /** @type {Partial<ProxyStreamRequest>} */
-    const proxyBody = hydrateServerProviderRequest(req.body || {}, 'azure') || req.body || {};
+    const proxyBody = hydrateServerProviderRequest(req.body || {}, 'azure', process.env, ctx.paths.RUNTIME_DATA_DIR) || req.body || {};
     if (rejectProxyPluginContext(proxyBody, res)) return;
     const { baseUrl, apiKey, model, systemPrompt, messages, maxTokens, apiVersion } =
       proxyBody;
@@ -1356,7 +1381,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
 
   app.post('/api/proxy/google/stream', async (req, res) => {
     /** @type {Partial<ProxyStreamRequest>} */
-    const proxyBody = hydrateServerProviderRequest(req.body || {}, 'google') || req.body || {};
+    const proxyBody = hydrateServerProviderRequest(req.body || {}, 'google', process.env, ctx.paths.RUNTIME_DATA_DIR) || req.body || {};
     if (rejectProxyPluginContext(proxyBody, res)) return;
     const { baseUrl, apiKey, model, systemPrompt, messages, maxTokens } = proxyBody;
     if (!apiKey || !model) {
@@ -1402,7 +1427,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
   });
 
   app.post('/api/proxy/ollama/stream', async (req, res) => {
-    const proxyBody = hydrateServerProviderRequest(req.body || {}, 'ollama') || req.body || {};
+    const proxyBody = hydrateServerProviderRequest(req.body || {}, 'ollama', process.env, ctx.paths.RUNTIME_DATA_DIR) || req.body || {};
     if (rejectProxyPluginContext(proxyBody, res)) return;
     const { baseUrl, apiKey, model, systemPrompt, messages, maxTokens } = proxyBody;
     if (!apiKey || !model) {
@@ -1561,7 +1586,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
   ) => {
    app.post(routePath, async (req, res) => {
     const rawProxyBody = req.body || {};
-    const proxyBody = hydrateServerProviderRequest(rawProxyBody, opts.providerId as any) || rawProxyBody;
+    const proxyBody = hydrateServerProviderRequest(rawProxyBody, opts.providerId as any, process.env, ctx.paths.RUNTIME_DATA_DIR) || rawProxyBody;
     if (rejectProxyPluginContext(proxyBody, res)) return;
     const {
       baseUrl,

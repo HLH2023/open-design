@@ -463,7 +463,7 @@ interface Props {
    * dialog and should NOT mutate onboarding state — it represents an
    * incremental save, not a final commit.
    */
-  onPersist: (cfg: AppConfig, options?: { forceMediaProviderSync?: boolean }) => Promise<void> | void;
+  onPersist: (cfg: AppConfig, options?: { forceMediaProviderSync?: boolean; clearProvider?: boolean }) => Promise<void> | void;
   /**
    * Non-optimistic write for the daemon-owned silent-update preference.
    * Settings → About uses this instead of the generic autosave path so a
@@ -3187,6 +3187,7 @@ export function SettingsDialog({
   const explicitOnboardingResetRef = useRef(false);
   const byokPreflightTrackingRef = useRef<string | null>(null);
   const committedClearedByokProviderKeyRef = useRef<string | null>(null);
+  const byokApiKeyEditedRef = useRef(false);
   const autosaveLatestRef = useRef<AppConfig>(cfg);
   // Baseline used by the draft-only detector: the snapshot at the most
   // recent successful autosave (or the initial cfg on mount). Compared
@@ -3282,6 +3283,7 @@ export function SettingsDialog({
       const mediaProvidersVersion = mediaProvidersChangeVersionRef.current;
       const persistOptions = {
         forceMediaProviderSync: mediaProvidersVersion > lastSyncedMediaProvidersVersionRef.current,
+        clearProvider: committedClearedProviderKey === byokProviderKeyForConfig(snapshot),
       };
       // Draft-only edit (e.g. the user is mid-typing the Composio API
       // key, which only commits via the explicit "Save key" gesture):
@@ -3388,6 +3390,7 @@ export function SettingsDialog({
         );
         void Promise.resolve(onPersist(persistedSnapshot, {
           forceMediaProviderSync: mediaProvidersVersion > lastSyncedMediaProvidersVersionRef.current,
+          clearProvider: committedClearedByokProviderKeyRef.current === byokProviderKeyForConfig(autosaveLatestRef.current),
         })).catch(() => undefined);
       }
       if (autosaveSavedTimerRef.current != null) {
@@ -3610,10 +3613,12 @@ export function SettingsDialog({
     const currentProviderKey = byokProviderKeyForConfig(cfg);
     const activeConfig = autosaveLastSavedRef.current;
     const commitsClearedActiveApiKey =
-      cleanedApiKey === ''
+      byokApiKeyEditedRef.current
+      && cleanedApiKey === ''
       && activeConfig.mode === 'api'
-      && activeConfig.apiKey.trim() !== ''
+      && (activeConfig.apiKey.trim() !== '' || activeConfig.serverProviderConfigured === true)
       && currentProviderKey === byokProviderKeyForConfig(activeConfig);
+    byokApiKeyEditedRef.current = false;
     committedClearedByokProviderKeyRef.current = commitsClearedActiveApiKey
       ? currentProviderKey
       : null;
@@ -5543,6 +5548,7 @@ export function SettingsDialog({
                 onBlur={onByokKeyCommit}
                 onChange={(value) => {
                   committedClearedByokProviderKeyRef.current = null;
+                  byokApiKeyEditedRef.current = true;
                   updateApiConfig({ apiKey: value });
                 }}
                 onFocus={() => {
