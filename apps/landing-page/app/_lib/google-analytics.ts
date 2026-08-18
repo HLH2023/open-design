@@ -2,7 +2,8 @@ export function googleAnalyticsHeadHtml(
   measurementId: string | undefined,
   pageName = 'landing_home',
 ): string {
-  if (!measurementId) return '';
+  // telemetry-free fork: Google Analytics never loads.
+  return '';
   return `<!-- Google tag (gtag.js) -->
 <script>
   window.dataLayer = window.dataLayer || [];

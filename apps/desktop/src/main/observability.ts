@@ -26,6 +26,7 @@ export async function reportDesktopObservabilityEvent(
   event: string,
   properties: Record<string, unknown>,
 ): Promise<boolean> {
+  return false;
   try {
     const baseUrl = await discoverBaseUrl();
     const res = await fetch(new URL("/api/observability/event", baseUrl).toString(), {

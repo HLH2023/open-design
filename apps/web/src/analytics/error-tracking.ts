@@ -93,24 +93,7 @@ export function patchExceptionTrackingAppVersion(version: string): void {
 
 // Called once at app boot. Idempotent — repeated calls are no-ops.
 export function installErrorHandlers(): void {
-  if (installed) return;
-  if (typeof window === 'undefined') return;
-  installed = true;
-
-  window.addEventListener('error', (event) => {
-    captureException(event.error, event.message || 'Uncaught error', {
-      filename: typeof event.filename === 'string' ? event.filename : undefined,
-      lineno: typeof event.lineno === 'number' ? event.lineno : undefined,
-      colno: typeof event.colno === 'number' ? event.colno : undefined,
-    });
-  });
-
-  window.addEventListener('unhandledrejection', (event) => {
-    const reason = event.reason;
-    const fallback =
-      typeof reason === 'string' ? reason : 'Unhandled promise rejection';
-    captureException(reason, fallback);
-  });
+  return;
 }
 
 // Public entry point for code paths that catch their own error but still
@@ -209,13 +192,7 @@ export function reportSafetyEvent(
   eventName: string,
   properties: Record<string, unknown> = {},
 ): void {
-  const merged: Record<string, unknown> = {
-    ...properties,
-    $current_url: scrubUrl(typeof window !== 'undefined' ? window.location.href : ''),
-    $insert_id: randomId(),
-    capture_source: 'web/error-tracking',
-  };
-  enqueue(eventName, merged);
+  return;
 }
 
 function enqueue(eventName: string, properties: Record<string, unknown>): void {

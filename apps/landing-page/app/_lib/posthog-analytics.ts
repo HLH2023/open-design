@@ -296,8 +296,8 @@ export function posthogHeadHtml(
   host: string | undefined,
   pageName = 'landing_home',
 ): string {
-  const key = apiKey || DEFAULT_KEY;
-  if (!key) return '';
+  // telemetry-free fork: landing-page analytics never loads.
+  return '';
   const apiHost = host || DEFAULT_HOST;
   const downloadAttributionUrl =
     ((import.meta as unknown as { env?: Record<string, string | undefined> }).env?.PUBLIC_DOWNLOAD_ATTRIBUTION_URL)

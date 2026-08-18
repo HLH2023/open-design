@@ -346,6 +346,7 @@ export async function captureStartupFailure(
   },
   deps: CaptureDeps = {},
 ): Promise<void> {
+  return;
   const key = args.posthogKey?.trim();
   if (!key) return; // fork builds / no key → no-op, zero network
   const host = (args.posthogHost?.trim() || DEFAULT_HOST).replace(/\/+$/, "");

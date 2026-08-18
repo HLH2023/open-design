@@ -39,6 +39,7 @@ import {
 import { readAppConfig } from './app-config.js';
 import { readTelemetryEnvironment } from './telemetry-environment.js';
 
+const TELEMETRY_DISABLED = true;
 const DEFAULT_HOST = 'https://us.i.posthog.com';
 
 // The daemon runs on the user's own machine, so `process.platform` IS the
@@ -179,6 +180,7 @@ export interface PosthogConfig {
 export function readPosthogConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): PosthogConfig | null {
+  if (TELEMETRY_DISABLED) return null;
   const key = env.POSTHOG_KEY?.trim();
   if (!key) return null;
   const host = (env.POSTHOG_HOST?.trim() || DEFAULT_HOST).replace(/\/+$/, '');
@@ -264,6 +266,7 @@ export function createAnalyticsService(args: {
   env?: NodeJS.ProcessEnv;
   dataDir: string;
 }): AnalyticsService {
+  if (TELEMETRY_DISABLED) return NOOP_SERVICE;
   const env = args.env ?? process.env;
   const cfg = readPosthogConfig(env);
   if (!cfg) return NOOP_SERVICE;

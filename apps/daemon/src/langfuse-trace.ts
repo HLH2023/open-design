@@ -411,24 +411,7 @@ export function readLangfuseConfig(
 export function readTelemetrySinkConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): TelemetrySinkConfig | null {
-  const relayUrl = env.OPEN_DESIGN_TELEMETRY_RELAY_URL?.trim();
-  if (relayUrl) {
-    return {
-      kind: 'relay',
-      relayUrl: normalizeOpenDesignTelemetryRelayUrl(relayUrl),
-      timeoutMs: parsePositiveInt(
-        env.OPEN_DESIGN_TELEMETRY_TIMEOUT_MS ?? env.LANGFUSE_TIMEOUT_MS,
-        DEFAULT_FETCH_TIMEOUT_MS,
-      ),
-      retries: parseNonNegativeInt(
-        env.OPEN_DESIGN_TELEMETRY_RETRIES ?? env.LANGFUSE_RETRIES,
-        DEFAULT_FETCH_RETRIES,
-      ),
-    };
-  }
-
-  const config = readLangfuseConfig(env);
-  return config == null ? null : { kind: 'langfuse', ...config };
+  return null;
 }
 
 function isVelaTelemetryEnabled(env: NodeJS.ProcessEnv): boolean {
@@ -446,29 +429,7 @@ export function readRunTelemetrySinkConfig(
   env: NodeJS.ProcessEnv = process.env,
   configuredEnv: Record<string, string> = {},
 ): RunTelemetrySinkConfig | null {
-  if (isVelaTelemetryEnabled(env)) {
-    const context = readVelaControlApiContext(env, configuredEnv);
-    const controlKey = context?.controlKey?.trim() ?? '';
-    if (context && controlKey) {
-      return {
-        kind: 'vela',
-        apiUrl: (context.apiUrl.trim() || 'https://amr-api.open-design.ai').replace(
-          /\/+$/,
-          '',
-        ),
-        controlKey,
-        timeoutMs: parsePositiveInt(
-          env.OPEN_DESIGN_TELEMETRY_TIMEOUT_MS ?? env.LANGFUSE_TIMEOUT_MS,
-          DEFAULT_FETCH_TIMEOUT_MS,
-        ),
-        retries: parseNonNegativeInt(
-          env.OPEN_DESIGN_TELEMETRY_RETRIES ?? env.LANGFUSE_RETRIES,
-          DEFAULT_FETCH_RETRIES,
-        ),
-      };
-    }
-  }
-  return readTelemetrySinkConfig(env);
+  return null;
 }
 
 /**
@@ -486,31 +447,7 @@ export function deriveLangfuseDeliveryState(
   prefs: TelemetryPrefs,
   sink: RunTelemetrySinkConfig | null,
 ): LangfuseDeliveryState {
-  if (prefs.metrics !== true) {
-    return {
-      langfuse_expected: false,
-      langfuse_delivery_status: 'not_expected',
-      langfuse_drop_reason: 'metrics_consent_off',
-    };
-  }
-  if (prefs.content !== true) {
-    return {
-      langfuse_expected: false,
-      langfuse_delivery_status: 'not_expected',
-      langfuse_drop_reason: 'content_consent_off',
-    };
-  }
-  if (!sink) {
-    return {
-      langfuse_expected: false,
-      langfuse_delivery_status: 'not_expected',
-      langfuse_drop_reason: 'missing_sink_config',
-    };
-  }
-  return {
-    langfuse_expected: true,
-    langfuse_delivery_status: 'queued',
-  };
+  return { langfuse_expected: false, langfuse_delivery_status: 'not_expected', langfuse_drop_reason: 'metrics_consent_off' };
 }
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
@@ -2390,77 +2327,7 @@ export async function reportRunCompleted(
   ctx: ReportContext,
   opts: ReportRunOpts = {},
 ): Promise<LangfuseDeliveryState> {
-  const notExpected = deriveLangfuseDeliveryState(ctx.prefs, null);
-  if (ctx.prefs.metrics !== true) return notExpected;
-  if (ctx.prefs.content !== true) return notExpected;
-
-  const config = resolveRunReportConfig(opts);
-  const langfuseDelivery = deriveLangfuseDeliveryState(ctx.prefs, config);
-  if (!config) {
-    if (!missingTelemetrySinkWarned) {
-      // Warn once per daemon process; packaged config is loaded at process
-      // start, so repeated run-level warnings would only add noise.
-      missingTelemetrySinkWarned = true;
-      console.warn(
-        '[langfuse-trace] Telemetry metrics are enabled but no relay or Langfuse credentials are configured',
-      );
-    }
-    return langfuseDelivery;
-  }
-
-  let batch: unknown[];
-  try {
-    batch = buildTracePayload({ ...ctx, langfuse: langfuseDelivery });
-    if (opts.deliveryPurpose === 'object-registration') {
-      batch = objectRegistrationBatch(batch);
-    }
-  } catch (error) {
-    console.warn(`[langfuse-trace] Payload build error: ${String(error)}`);
-    return {
-      langfuse_expected: true,
-      langfuse_delivery_status: 'failed',
-      langfuse_drop_reason: 'payload_too_large',
-    };
-  }
-
-  const serialized = JSON.stringify({ batch });
-  // Compare actual UTF-8 byte length, not String.length (UTF-16 code units),
-  // so the cap matches the byte-oriented contract documented in the spec
-  // (and the byte-oriented limit Langfuse enforces server-side).
-  const serializedBytes = Buffer.byteLength(serialized, 'utf8');
-  if (serializedBytes > HARD_BATCH_MAX_BYTES) {
-    console.warn(
-      `[langfuse-trace] Batch too large (${serializedBytes}B > ${HARD_BATCH_MAX_BYTES}B), dropping trace ${ctx.run.runId}`,
-    );
-    return {
-      langfuse_expected: true,
-      langfuse_delivery_status: 'failed',
-      langfuse_drop_reason: 'payload_too_large',
-    };
-  }
-
-  const fetchImpl = opts.fetchImpl ?? globalThis.fetch;
-  if (config.kind === 'vela') {
-    const installationId = ctx.installationId?.trim() ?? '';
-    if (!installationId) {
-      const fallback = readTelemetrySinkConfig();
-      if (!fallback) {
-        return {
-          langfuse_expected: false,
-          langfuse_delivery_status: 'not_expected',
-          langfuse_drop_reason: 'missing_sink_config',
-        };
-      }
-      return fallback.kind === 'relay'
-        ? postRelayBatch(fallback, serialized, fetchImpl)
-        : postLangfuseBatch(fallback, batch, fetchImpl);
-    }
-    return postVelaBatch(config, batch, installationId, fetchImpl);
-  }
-  if (config.kind === 'relay') {
-    return postRelayBatch(config, serialized, fetchImpl);
-  }
-  return postLangfuseBatch(config, batch, fetchImpl);
+  return { langfuse_expected: false, langfuse_delivery_status: 'not_expected', langfuse_drop_reason: 'metrics_consent_off' };
 }
 
 // Build a Langfuse `score-create` batch for a user-supplied turn rating.
@@ -2534,52 +2401,5 @@ export async function reportRunFeedback(
   ctx: FeedbackReportContext,
   opts: ReportFeedbackOpts = {},
 ): Promise<void> {
-  if (ctx.prefs.metrics !== true) return;
-  if (ctx.prefs.content !== true) return;
-
-  const config = resolveFeedbackReportConfig(opts);
-  if (!config) return;
-
-  let batch: unknown[];
-  try {
-    batch = buildFeedbackPayload(ctx);
-  } catch (error) {
-    console.warn(`[langfuse-trace] Feedback payload build error: ${String(error)}`);
-    return;
-  }
-
-  const serialized = JSON.stringify({ batch });
-  const serializedBytes = Buffer.byteLength(serialized, 'utf8');
-  if (serializedBytes > HARD_BATCH_MAX_BYTES) {
-    console.warn(
-      `[langfuse-trace] Feedback batch too large (${serializedBytes}B > ${HARD_BATCH_MAX_BYTES}B), dropping feedback for ${ctx.runId}`,
-    );
-    return;
-  }
-
-  const fetchImpl = opts.fetchImpl ?? globalThis.fetch;
-  if (config.kind === 'vela') {
-    const installationId = ctx.installationId?.trim() ?? '';
-    if (!installationId) {
-      const fallback = readTelemetrySinkConfig();
-      if (!fallback) return;
-      if (fallback.kind === 'relay') {
-        await postRelayBatch(fallback, serialized, fetchImpl);
-        return;
-      }
-      await postLangfuseBatch(fallback, batch, fetchImpl);
-      return;
-    }
-    // Never fall back to anonymous sinks for feedback: scores need the
-    // account-scoped Vela trace from the completed run.
-    await postVelaBatch(config, batch, installationId, fetchImpl, {
-      allowAnonymousAuthFallback: false,
-    });
-    return;
-  }
-  if (config.kind === 'relay') {
-    await postRelayBatch(config, serialized, fetchImpl);
-    return;
-  }
-  await postLangfuseBatch(config, batch, fetchImpl);
+  return;
 }

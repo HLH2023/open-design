@@ -1749,18 +1749,14 @@ export async function mirrorAmrEntryAnalytics(
   payload: AmrEntryAnalyticsPayload,
   deps: MirrorAmrEntryAnalyticsDeps = {},
 ): Promise<MirrorAmrEntryAnalyticsResult> {
-  return mirrorAmrAnalyticsEvent(buildAmrEntryAnalyticsCommon(payload, deps), payload, deps);
+  return { mirrored: false, error: 'telemetry_disabled' };
 }
 
 export async function mirrorAmrOnboardingProfileAnalytics(
   payload: AmrOnboardingProfileAnalyticsPayload,
   deps: MirrorAmrEntryAnalyticsDeps = {},
 ): Promise<MirrorAmrEntryAnalyticsResult> {
-  return mirrorAmrAnalyticsEvent(
-    buildAmrOnboardingProfileAnalyticsCommon(payload, deps),
-    payload,
-    deps,
-  );
+  return { mirrored: false, error: 'telemetry_disabled' };
 }
 
 async function mirrorAmrAnalyticsEvent(

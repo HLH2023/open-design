@@ -20,6 +20,8 @@ import {
   OPEN_DESIGN_PLUGIN_ID,
 } from '../mcp-observability.js';
 
+const TELEMETRY_DISABLED = true;
+
 export interface DaemonTelemetry {
   analyticsService: ReturnType<typeof createAnalyticsService>;
   disposeFatalHandlers: () => void;
@@ -43,6 +45,7 @@ export interface RegisterTelemetryRoutesDeps {
 export async function resolveMcpAnalyticsContext(
   deps: RegisterTelemetryRoutesDeps,
 ): Promise<McpAnalyticsContextResponse> {
+  if (TELEMETRY_DISABLED) return { enabled: false, deviceId: null, locale: 'en' };
   const disabled: McpAnalyticsContextResponse = {
     enabled: false,
     deviceId: null,
@@ -82,6 +85,7 @@ export async function resolveTrustedMcpEventContext(
   deps: RegisterTelemetryRoutesDeps,
   context: AnalyticsContext | null,
 ): Promise<AnalyticsContext | null> {
+  if (TELEMETRY_DISABLED) return null;
   if (!context || context.clientType !== 'external_mcp') return null;
   try {
     const appCfg = await deps.readAppConfig(deps.dataDir);
@@ -116,6 +120,10 @@ export function registerTelemetryRoutes(app: Express, deps: RegisterTelemetryRou
   //   POSTHOG_KEY, regardless of consent, so safety/error tracking can run.
   // - Without a build-time key, every telemetry client remains a no-op.
   app.get('/api/analytics/config', async (_req, res) => {
+    if (TELEMETRY_DISABLED) {
+      res.json({ enabled: false, env: 'disabled', key: null, host: null, installationId: null });
+      return;
+    }
     const baseline = readPublicConfigResponse();
     if (!baseline.enabled) {
       res.json(baseline);
@@ -155,6 +163,7 @@ export function registerTelemetryRoutes(app: Express, deps: RegisterTelemetryRou
   });
 
   app.post('/api/analytics/mcp/event', express.json({ limit: '16kb' }), async (req, res) => {
+    if (TELEMETRY_DISABLED) { res.json({ ok: true, disabled: true }); return; }
     const body = (req.body ?? {}) as Partial<McpAnalyticsEventRequest>;
     const allowedEvents = new Set([
       'mcp_session_initialized',
@@ -224,6 +233,7 @@ export function registerTelemetryRoutes(app: Express, deps: RegisterTelemetryRou
   });
 
   app.post('/api/observability/event', express.json({ limit: '64kb' }), (req, res) => {
+    if (TELEMETRY_DISABLED) { res.json({ ok: true, disabled: true }); return; }
     const body = (req.body ?? {}) as Partial<ObservabilityEventRequest>;
     const eventName = typeof body.event === 'string' ? body.event.trim() : '';
     if (!eventName) {

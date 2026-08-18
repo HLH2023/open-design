@@ -181,16 +181,9 @@ const TELEMETRY_KEYS: ReadonlySet<string> = new Set([
   'artifactManifest',
 ]);
 
-function validateTelemetry(raw: unknown): TelemetryPrefs | undefined {
-  if (raw === undefined || raw === null) return undefined;
-  if (typeof raw !== 'object' || Array.isArray(raw)) return undefined;
-  const result: Record<string, boolean> = Object.create(null);
-  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    if (k === '__proto__' || k === 'constructor') continue;
-    if (!TELEMETRY_KEYS.has(k)) continue;
-    if (typeof v === 'boolean') result[k] = v;
-  }
-  return Object.keys(result).length > 0 ? (result as TelemetryPrefs) : undefined;
+function validateTelemetry(_raw: unknown): TelemetryPrefs {
+  // This fork never accepts telemetry enablement from legacy files or the Web UI.
+  return { metrics: false, content: false, artifactManifest: false };
 }
 
 const AGENT_CLI_ENV_KEYS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
@@ -692,13 +685,10 @@ function filterAllowedKeys(obj: Record<string, unknown>): AppConfigPrefs {
 // the new default), so opt-out users stay opted out across the
 // 0.7.x → 0.8.0 upgrade.
 function applyTelemetryDefaults(prefs: AppConfigPrefs): AppConfigPrefs {
-  if (prefs.telemetry === undefined) {
-    return {
-      ...prefs,
-      telemetry: { metrics: false, content: false },  // [telemetry-free]
-    };
-  }
-  return prefs;
+  return {
+    ...prefs,
+    telemetry: { metrics: false, content: false, artifactManifest: false },
+  };
 }
 
 export async function readAppConfig(dataDir: string): Promise<AppConfigPrefs> {
@@ -824,7 +814,7 @@ async function doWrite(
     ? inferAgentCliEnvIntentForExplicitEnvWrite(next as AppConfigPrefs)
     : next as AppConfigPrefs;
   const normalizedNext = normalizeAgentCliEnvPrefs(nextWithInferredIntent);
-  const normalizedNextWithoutRetiredAgents = normalizeRetiredAgentPrefs(normalizedNext);
+  const normalizedNextWithoutRetiredAgents = applyTelemetryDefaults(normalizeRetiredAgentPrefs(normalizedNext));
   const file = configFile(dataDir);
   await mkdir(path.dirname(file), { recursive: true });
   const tmp = file + '.' + randomBytes(4).toString('hex') + '.tmp';
