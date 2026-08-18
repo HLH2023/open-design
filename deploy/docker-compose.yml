@@ -17,12 +17,18 @@ services:
       OD_WEB_PORT: ${OPEN_DESIGN_PORT:-7456}
       OD_API_TOKEN: ${OD_API_TOKEN:-}
       OD_WEB_API_TOKEN: ${OD_WEB_API_TOKEN:-}
+      OD_PROVIDER_PROTOCOL: ${OD_PROVIDER_PROTOCOL:-}
+      OD_PROVIDER_BASE_URL: ${OD_PROVIDER_BASE_URL:-}
+      OD_PROVIDER_MODEL: ${OD_PROVIDER_MODEL:-}
+      OD_PROVIDER_API_KEY_FILE: /run/secrets/od_provider_api_key
       OD_DISABLE_API_AUTH: ${OPEN_DESIGN_DISABLE_API_AUTH:-}
       OD_CODEX_SANDBOX: ${OD_CODEX_SANDBOX:-}
     ports:
       - "192.168.5.22:${OPEN_DESIGN_PORT:-7456}:7456"
     volumes:
       - open_design_data:/app/.od
+    secrets:
+      - od_provider_api_key
     read_only: true
     tmpfs:
       - /tmp
@@ -45,3 +51,7 @@ services:
 
 volumes:
   open_design_data:
+
+secrets:
+  od_provider_api_key:
+    file: ${OD_PROVIDER_API_KEY_FILE:-/dev/null}

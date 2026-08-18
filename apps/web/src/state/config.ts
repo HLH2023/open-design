@@ -1218,6 +1218,25 @@ export async function syncMediaProvidersToDaemon(
   }
 }
 
+export interface PublicServerProviderConfig {
+  protocol: AppConfig['apiProtocol'];
+  baseUrl: string;
+  model: string;
+  configured: boolean;
+  source: 'server';
+}
+
+export async function fetchServerProviderConfig(): Promise<PublicServerProviderConfig | null> {
+  try {
+    const response = await fetch('/api/provider/server-config', { cache: 'no-store' });
+    if (!response.ok) return null;
+    const payload = await response.json() as { provider?: PublicServerProviderConfig | null };
+    return payload.provider ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchDaemonConfig(): Promise<AppConfigPrefs | null> {
   try {
     const res = await fetch('/api/app-config');

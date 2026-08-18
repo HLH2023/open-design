@@ -50,6 +50,30 @@ export async function streamMessage(
   // the same shape regardless of protocol.
   context?: ProxyContext,
 ): Promise<void> {
+  // Server-side Providers must never instantiate an SDK in the browser,
+  // including the official Anthropic endpoint. The daemon injects the key.
+  if (cfg.serverProviderConfigured) {
+    if (cfg.apiProtocol === 'openai') {
+      return streamMessageOpenAI(cfg, system, history, signal, handlers);
+    }
+    if (cfg.apiProtocol === 'azure') {
+      return streamMessageAzure(cfg, system, history, signal, handlers);
+    }
+    if (cfg.apiProtocol === 'google') {
+      return streamMessageGoogle(cfg, system, history, signal, handlers);
+    }
+    if (cfg.apiProtocol === 'ollama') {
+      return streamMessageOllama(cfg, system, history, signal, handlers);
+    }
+    if (cfg.apiProtocol === 'senseaudio') {
+      return streamMessageSenseAudio(cfg, system, history, signal, handlers, context);
+    }
+    if (cfg.apiProtocol === 'aihubmix') {
+      return streamMessageAIHubMix(cfg, system, history, signal, handlers, context);
+    }
+    return streamMessageAnthropicProxy(cfg, system, history, signal, handlers, context);
+  }
+
   // Prefer the explicit Settings protocol; keep the legacy heuristic as a
   // fallback for configs saved before apiProtocol existed.
   if (cfg.apiProtocol === 'azure') {

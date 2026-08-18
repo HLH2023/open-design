@@ -1414,7 +1414,11 @@ export function shouldEnableSettingsSave(
       cfg.agentId && agents.find((a) => a.id === cfg.agentId)?.available,
     );
   }
-  return Boolean(cfg.apiKey.trim() && cfg.model.trim() && isBaseUrlValid);
+  return Boolean(
+    (cfg.apiKey.trim() || cfg.serverProviderConfigured === true)
+    && cfg.model.trim()
+    && isBaseUrlValid,
+  );
 }
 
 /**
@@ -3438,7 +3442,7 @@ export function SettingsDialog({
   const byokProviderConfigured = (provider: ByokProviderPreset): boolean => {
     if (provider.custom) {
       return canRunProviderConnectionTest(currentApiProtocolConfig(cfg), {
-        requiresApiKey: byokRequiresApiKey,
+        requiresApiKey: byokRequiresApiKey && cfg.serverProviderConfigured !== true,
       }) && isValidApiBaseUrl(cfg.baseUrl);
     }
     const providerDraft = cfg.byokProviderConfigDrafts?.[
@@ -3485,7 +3489,7 @@ export function SettingsDialog({
         model: cfg.model,
       },
       {
-        requiresApiKey: byokRequiresApiKey,
+        requiresApiKey: byokRequiresApiKey && cfg.serverProviderConfigured !== true,
         keyValidationBaseUrl: byokKeyValidationBaseUrl,
       },
     ),
@@ -3524,7 +3528,7 @@ export function SettingsDialog({
         model: cfg.model,
       },
       {
-        requiresApiKey: byokRequiresApiKey,
+        requiresApiKey: byokRequiresApiKey && cfg.serverProviderConfigured !== true,
         requireModel: false,
         keyValidationBaseUrl: byokKeyValidationBaseUrl,
       },
@@ -3826,7 +3830,7 @@ export function SettingsDialog({
     focusByokRequiredFieldAfterProtocolSwitchRef.current = false;
     focusByokRequiredField(
       missingByokConnectionFields(cfg, {
-        requiresApiKey: byokRequiresApiKey,
+        requiresApiKey: byokRequiresApiKey && cfg.serverProviderConfigured !== true,
       })[0],
     );
   }, [apiModelCustomActive, cfg, apiProtocol, byokRequiresApiKey]);
@@ -5443,7 +5447,7 @@ export function SettingsDialog({
                   canRunConnectionTest={
                     !byokFirstPartyBaseUrl?.hostTypo &&
                     canRunProviderConnectionTest(cfg, {
-                      requiresApiKey: byokRequiresApiKey,
+                      requiresApiKey: byokRequiresApiKey && cfg.serverProviderConfigured !== true,
                     })
                   }
                   labels={{

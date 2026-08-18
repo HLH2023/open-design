@@ -390,6 +390,8 @@ export interface AppConfig {
   baseUrl: string;
   model: string;
   apiProtocol?: ApiProtocol;
+  /** True when the daemon can inject a server-side Provider key. */
+  serverProviderConfigured?: boolean;
   apiVersion?: string;
   /** SenseAudio BYOK only — default image model for the daemon-side
    *  generate_image tool. Mirrors apiProtocolConfigs.senseaudio.byokImageModel

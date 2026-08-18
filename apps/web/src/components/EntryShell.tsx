@@ -2096,9 +2096,11 @@ function OnboardingView({
 }) {
   const t = useT();
   const analytics = useAnalytics();
-  const [step, setStep] = useState(0);
-  const [runtime, setRuntime] = useState<'amr' | 'local' | 'byok' | null>(null);
-  const [modelSource, setModelSource] = useState<'amr' | 'local' | 'byok'>('amr');
+  // This fork has no Cloud/AMR/Vela login gate. Start directly at the
+  // custom Provider setup screen; local CLI remains available from Settings.
+  const [step, setStep] = useState(2);
+  const [runtime, setRuntime] = useState<'amr' | 'local' | 'byok' | null>('byok');
+  const [modelSource, setModelSource] = useState<'amr' | 'local' | 'byok'>('byok');
   const modelSourceOptionRefs = useRef<
     Record<'amr' | 'local' | 'byok', HTMLButtonElement | null>
   >({ amr: null, local: null, byok: null });
@@ -2189,13 +2191,13 @@ function OnboardingView({
     step,
   };
   const canTestProvider =
-    Boolean(config.apiKey.trim()) &&
+    (config.serverProviderConfigured === true || Boolean(config.apiKey.trim())) &&
     Boolean(config.baseUrl.trim()) &&
     Boolean(config.model.trim());
   const canFetchProviderModels =
     apiProtocol !== 'azure' &&
     apiProtocol !== 'ollama' &&
-    Boolean(config.apiKey.trim()) &&
+    (config.serverProviderConfigured === true || Boolean(config.apiKey.trim())) &&
     Boolean(config.baseUrl.trim()) &&
     isLikelyHttpUrl(config.baseUrl);
   const visibleProviderTestState =
@@ -2314,23 +2316,10 @@ function OnboardingView({
   }, [agents, agentsLoading, cliScanStatus, config.agentId, runtime]);
 
   useEffect(() => {
-    // Fetch login status on mount in parallel with agent discovery so the
-    // landing CTA settles quickly for already-authenticated users.
-    let cancelled = false;
-    void fetchVelaLoginStatus()
-      .then((next) => {
-        if (!cancelled && next) {
-          setAmrStatus(next);
-          onAmrLoginStatusChange?.(next);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setAmrStatusResolved(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [onAmrLoginStatusChange]);
+    // Cloud/AMR/Vela is intentionally absent in this fork. Mark the legacy
+    // status gate resolved locally without making a network request.
+    setAmrStatusResolved(true);
+  }, []);
 
   useEffect(() => {
     if (

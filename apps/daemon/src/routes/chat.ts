@@ -39,6 +39,7 @@ import { googleStreamGenerateContentUrl } from '../integrations/google-models.js
 import { createRoleMarkerGuard } from '../role-marker-guard.js';
 import { authorizeReasoningEgress, sendReasoningEgressDenial } from '../reasoning-egress.js';
 import type { AuthorizeProjectRequest } from '../collab/project-request-authority.js';
+import { hydrateServerProviderRequest, publicServerProviderConfig } from '../server-provider.js';
 
 // Allowlist for the `/feedback` route. Mirrors the
 // ChatMessageFeedbackReasonCode union in packages/contracts/src/api/chat.ts.
@@ -186,6 +187,10 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     res.status(202).json(outcome);
   });
 
+  app.get('/api/provider/server-config', (_req, res) => {
+    res.json({ provider: publicServerProviderConfig() });
+  });
+
   // ---- Connection tests (single-shot JSON; no SSE) ------------------------
   // Settings dialog uses these to verify a config works without sending a
   // real chat. Always return HTTP 200 with `ok: false` on upstream-caused
@@ -204,8 +209,11 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     };
     req.on('close', abortIfRequestAborted);
     res.on('close', abortIfResponseClosed);
-    const body = req.body || {};
-    const protocol = body.protocol;
+    const rawBody = req.body || {};
+    const protocol = rawBody.protocol;
+    const body = typeof protocol === 'string'
+      ? (hydrateServerProviderRequest(rawBody, protocol as any) || rawBody)
+      : rawBody;
     if (
       typeof protocol !== 'string' ||
       !['anthropic', 'openai', 'azure', 'google', 'ollama', 'senseaudio', 'aihubmix', 'bedrock'].includes(protocol)
@@ -280,7 +288,10 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     };
     req.on('close', abortIfRequestAborted);
     res.on('close', abortIfResponseClosed);
-    const body = req.body || {};
+    const rawBody = req.body || {};
+    const body = rawBody.mode === 'provider' && typeof rawBody.protocol === 'string'
+      ? (hydrateServerProviderRequest(rawBody, rawBody.protocol as any) || rawBody)
+      : rawBody;
     try {
       if (body.mode === 'provider') {
         const protocol = body.protocol;
@@ -983,7 +994,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
 
   app.post('/api/proxy/anthropic/stream', async (req, res) => {
     /** @type {Partial<ProxyStreamRequest>} */
-    const proxyBody = req.body || {};
+    const proxyBody = hydrateServerProviderRequest(req.body || {}, 'anthropic') || req.body || {};
     if (rejectProxyPluginContext(proxyBody, res)) return;
     const { baseUrl, apiKey, model, systemPrompt, messages, maxTokens } =
       proxyBody;
@@ -1029,7 +1040,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
 
   app.post('/api/proxy/openai/stream', async (req, res) => {
     /** @type {Partial<ProxyStreamRequest>} */
-    const proxyBody = req.body || {};
+    const proxyBody = hydrateServerProviderRequest(req.body || {}, 'openai') || req.body || {};
     if (rejectProxyPluginContext(proxyBody, res)) return;
     const { baseUrl, apiKey, model, systemPrompt, messages, maxTokens } =
       proxyBody;
@@ -1181,7 +1192,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
 
   app.post('/api/proxy/azure/stream', async (req, res) => {
     /** @type {Partial<ProxyStreamRequest>} */
-    const proxyBody = req.body || {};
+    const proxyBody = hydrateServerProviderRequest(req.body || {}, 'azure') || req.body || {};
     if (rejectProxyPluginContext(proxyBody, res)) return;
     const { baseUrl, apiKey, model, systemPrompt, messages, maxTokens, apiVersion } =
       proxyBody;
@@ -1345,7 +1356,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
 
   app.post('/api/proxy/google/stream', async (req, res) => {
     /** @type {Partial<ProxyStreamRequest>} */
-    const proxyBody = req.body || {};
+    const proxyBody = hydrateServerProviderRequest(req.body || {}, 'google') || req.body || {};
     if (rejectProxyPluginContext(proxyBody, res)) return;
     const { baseUrl, apiKey, model, systemPrompt, messages, maxTokens } = proxyBody;
     if (!apiKey || !model) {
@@ -1353,7 +1364,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
         res,
         400,
         'BAD_REQUEST',
-        'apiKey and model are required',
+        'server provider is not configured or model is missing',
       );
     }
 
@@ -1391,7 +1402,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
   });
 
   app.post('/api/proxy/ollama/stream', async (req, res) => {
-    const proxyBody = req.body || {};
+    const proxyBody = hydrateServerProviderRequest(req.body || {}, 'ollama') || req.body || {};
     if (rejectProxyPluginContext(proxyBody, res)) return;
     const { baseUrl, apiKey, model, systemPrompt, messages, maxTokens } = proxyBody;
     if (!apiKey || !model) {
@@ -1549,7 +1560,8 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     opts: ByokToolChatProxyOptions,
   ) => {
    app.post(routePath, async (req, res) => {
-    const proxyBody = req.body || {};
+    const rawProxyBody = req.body || {};
+    const proxyBody = hydrateServerProviderRequest(rawProxyBody, opts.providerId as any) || rawProxyBody;
     if (rejectProxyPluginContext(proxyBody, res)) return;
     const {
       baseUrl,

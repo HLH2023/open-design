@@ -141,6 +141,7 @@ import {
 import { goBack, navigate, useRoute, type Route } from './router';
 import {
   fetchDaemonConfig,
+  fetchServerProviderConfig,
   DEFAULT_CONFIG,
   DEFAULT_PET,
   fetchMediaProvidersFromDaemon,
@@ -2121,10 +2122,12 @@ function AppInner() {
       // before daemon overrides it.
       void Promise.all([
         fetchDaemonConfig(),
+        fetchServerProviderConfig(),
         fetchComposioConfigFromDaemon(),
         fetchMediaProvidersFromDaemon(),
       ]).then(async ([
         daemonConfig,
+        serverProviderConfig,
         daemonComposioConfig,
         daemonMediaProvidersResult,
       ]) => {
@@ -2148,11 +2151,25 @@ function AppInner() {
           baseConfig.mediaProviders,
           daemonMediaProvidersLoaded,
         );
+        const serverProviderOverlay = serverProviderConfig?.configured
+          ? {
+              serverProviderConfigured: true,
+              apiProtocol: serverProviderConfig.protocol,
+              apiKey: '',
+              baseUrl: serverProviderConfig.baseUrl,
+              model: serverProviderConfig.model,
+              apiProviderBaseUrl: null,
+              mode: 'api' as const,
+            }
+          : { serverProviderConfigured: false };
         const next = mergeDaemonMediaProviders(
-          clearStaleAmrModelChoiceOnProfileChange(
-            baseConfig,
-            mergeDaemonConfig(baseConfig, daemonConfig),
-          ),
+          {
+            ...clearStaleAmrModelChoiceOnProfileChange(
+              baseConfig,
+              mergeDaemonConfig(baseConfig, daemonConfig),
+            ),
+            ...serverProviderOverlay,
+          },
           daemonMediaProvidersLoaded,
         );
         const hasLocalComposioKey = Boolean(next.composio?.apiKey?.trim());

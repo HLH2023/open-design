@@ -44,7 +44,7 @@ export async function streamProxyEndpoint(
   handlers: StreamHandlers,
   context?: ProxyContext,
 ): Promise<void> {
-  if (!cfg.apiKey) {
+  if (!cfg.apiKey && !cfg.serverProviderConfigured) {
     handlers.onError(new Error('Missing API key — open Settings and paste one in.'));
     return;
   }
@@ -63,7 +63,7 @@ export async function streamProxyEndpoint(
       },
       body: JSON.stringify({
         baseUrl: cfg.baseUrl,
-        apiKey: cfg.apiKey,
+        ...(cfg.apiKey ? { apiKey: cfg.apiKey } : {}),
         model: cfg.model,
         systemPrompt: system,
         messages,

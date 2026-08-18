@@ -990,6 +990,11 @@ export interface VelaLoginAuthStage {
   errorKind?: AmrAuthErrorKind;
 }
 
+// This fork deliberately does not use Open Design Cloud/AMR/Vela.
+// Keep the compatibility functions below for older UI modules, but make them
+// local no-ops so a browser session can never start or poll the Cloud login.
+export const NO_CLOUD_MODE = true;
+
 // AMR (vela) login surfaces three thin endpoints on the daemon:
 //   GET  /api/integrations/vela/status   — read ~/.amr/config.json projection
 //   POST /api/integrations/vela/login    — spawn `vela login` (vela opens browser itself)
@@ -997,6 +1002,7 @@ export interface VelaLoginAuthStage {
 //   POST /api/integrations/vela/logout   — clear ~/.amr auth and Settings-backed AMR auth env
 // The Settings UI polls /status after kicking off /login to detect completion.
 export async function fetchVelaLoginStatus(options: { refresh?: boolean } = {}): Promise<VelaLoginStatus | null> {
+  if (NO_CLOUD_MODE) return null;
   try {
     const query = options.refresh ? '?refresh=1' : '';
     const resp = await fetch(`/api/integrations/vela/status${query}`, { cache: 'no-store' });
@@ -1015,6 +1021,7 @@ export async function fetchVelaLoginStatus(options: { refresh?: boolean } = {}):
 }
 
 export async function fetchAmrWalletSnapshot(options: { refresh?: boolean } = {}): Promise<AmrWalletSnapshot | null> {
+  if (NO_CLOUD_MODE) return null;
   try {
     const query = options.refresh ? '?refresh=1' : '';
     const resp = await fetch(`/api/integrations/vela/wallet${query}`, { cache: 'no-store' });
@@ -1026,6 +1033,7 @@ export async function fetchAmrWalletSnapshot(options: { refresh?: boolean } = {}
 }
 
 export async function fetchAmrModels(): Promise<AmrModelsResponse | null> {
+  if (NO_CLOUD_MODE) return null;
   try {
     const resp = await fetch('/api/amr/models', { cache: 'no-store' });
     if (!resp.ok) return null;
@@ -1052,6 +1060,7 @@ export async function startVelaLogin(
   odDeviceId?: string | null,
   authAttemptId?: string,
 ): Promise<StartVelaLoginResult> {
+  if (NO_CLOUD_MODE) return { ok: false, status: 404 };
   try {
     const loginAttribution =
       attribution && odDeviceId ? { ...attribution, odDeviceId } : attribution;
@@ -1100,6 +1109,7 @@ export async function startVelaLogin(
 export async function cancelVelaLogin(
   authAttemptId?: string,
 ): Promise<{ ok: boolean; canceled?: boolean }> {
+  if (NO_CLOUD_MODE) return { ok: false };
   const hasTarget = authAttemptId !== undefined;
   const canonicalAuthAttemptId = authAttemptId
     && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(authAttemptId)
@@ -1133,6 +1143,7 @@ export async function cancelVelaLogin(
 }
 
 export async function velaLogout(): Promise<{ ok: boolean }> {
+  if (NO_CLOUD_MODE) return { ok: false };
   try {
     const resp = await fetch('/api/integrations/vela/logout', { method: 'POST' });
     return { ok: resp.ok };
