@@ -43,4 +43,4 @@ ENV NODE_ENV=production NODE_OPTIONS=--max-old-space-size=192 OD_BIND_HOST=0.0.0
 EXPOSE 7456
 USER open-design
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["node", "apps/daemon/dist/cli.js", "--no-open"]
+CMD ["node", "apps/daemon/dist/cli.js", "--host", "0.0.0.0", "--no-open"]
